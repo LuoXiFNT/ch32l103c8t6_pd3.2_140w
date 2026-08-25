@@ -1,0 +1,85 @@
+version: "4.1"
+name: ch32l103-demo
+type: RISC-V
+deviceName: null
+packDir: null
+srcDirs:
+  - src
+  - sdk
+virtualFolder:
+  name: <virtual_root>
+  files: []
+  folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: b17fc658a4aae53ad7643d4c1dbb8b27
+targets:
+  Debug:
+    cppPreprocessAttrs:
+      defineList: []
+      incList:
+        - sdk/Peripheral/inc
+        - src
+        - sdk/Core
+        - sdk/Debug
+      libList: []
+    excludeList:
+      - Startup/startup_ch32v30x_D8.S
+      - sdk/Startup/startup_ch32v20x_D8W.S
+      - sdk/Startup/startup_ch32v20x_D8.S
+    settings:
+      debugger: cortex-debug
+    toolchain: RISCV_GCC
+    toolchainConfigMap:
+      RISCV_GCC:
+        linkerScriptPath: ""
+        options:
+          version: 2
+          afterBuildTasks:
+            - name: elf_to_lst
+              abortAfterFailed: false
+              command: riscv-none-embed-objdump --source --all-headers --demangle --disassemble "${OutDir}\${targetName}.elf" > "${OutDir}\${targetName}.lst"
+              disable: false
+          asm-compiler:
+            ASM_FLAGS: -Wl,-Bstatic
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            C_FLAGS: -Wl,-Bstatic
+            language-c: gnu99
+            language-cpp: c++11
+            one-elf-section-per-data: true
+            one-elf-section-per-function: true
+            optimization: level-size
+            warnings: all-warnings
+          global:
+            abi: ilp32
+            arch: rv32imac
+            code-model: medany
+            misc-control: -msmall-data-limit=8 -msave-restore -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized --specs=nano.specs --specs=nosys.specs
+            output-debug-info: enable
+          linker:
+            $toolName: auto
+            LD_FLAGS: -Xlinker --gc-sections -nostartfiles -T "sdk/Ld/Link.ld"
+            output-format: elf
+            remove-unused-input-sections: true
+    uploadConfigMap:
+      Custom:
+        bin: ${ExecutableName}.bin
+        commandLine: download.cmd ${programFile}
+        eraseChipCommand: ""
+      JLink:
+        baseAddr: "0x08000000"
+        bin: ""
+        cpuInfo:
+          cpuName: STM32F103C8
+          vendor: ST
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+      OpenOCD:
+        baseAddr: "0x08000000"
+        bin: ""
+        interface: ${workspaceFolder}/tools/null
+        target: ${workspaceFolder}/tools/wch-riscv
+    uploader: Custom
