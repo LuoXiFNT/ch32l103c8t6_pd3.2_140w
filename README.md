@@ -42,7 +42,7 @@
 
 ```text
 src/
-├─ main.c, board_config.h        应用入口与板级引脚/常量配置
+├─ main.c, board_config.h        应用入口与主板/副板编译角色选择
 ├─ platform/                     板级适配层：CH32L103 外设、系统与 port
 │   ├─ ch32l103_init.*           时钟、GPIO 与外设初始化
 │   ├─ ch32l103_it.*             中断向量实现（含 1 ms 系统节拍）
@@ -57,8 +57,8 @@ src/
 │   └─ lcd_st7735s/              面板控制器与图形队列
 │       └─ st7735s.c/.h, lcd.c/.h, lcdfont.h, lcd_pic.h
 ├─ pd/                           协议与控制层
-│   └─ pd.c/.h, pd_internal.h, pd_phy, pd_cc, pd_cable,
-│      pd_capability, pd_policy, pd_power
+│   └─ pd.c/.h, pd_internal.h, pd_message, pd_phy, pd_cc,
+│      pd_cable, pd_capability, pd_policy, pd_power
 └─ service/                      功能服务层
     └─ display_service, ina226_service, fault_service, fan_service,
        led_service, board_link
@@ -102,7 +102,7 @@ I2C2 由 INA226、MP2980 和 CH211 共用。所有访问统一进入 DMA 队列�
 PD 功能按职责拆分，公共接口集中在 `pd.h`，模块内部状态与时序定义集中在 `pd_internal.h`：
 
 - `pd_cc.c`：CC 接入、方向检测和连接状态管理。
-- `pd_phy.c`：USB PD 收发、GoodCRC、消息 ID、重试及中断配合。
+- `pd_message.c`：报头构造、MessageID 选择与 SOP 映射，不访问外设。
 - `pd_cable.c`：VCONN、SOP' 通信和 E-Marker 能力识别。
 - `pd_capability.c`：PDO/APDO 编码、Source Capability 生成及 RDO 合法性校验。
 - `pd_policy.c`：控制消息、扩展消息、Revision、PPS Status 和 EPR Mode 等策略响应。
