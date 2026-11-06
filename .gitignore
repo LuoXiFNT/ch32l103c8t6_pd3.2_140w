@@ -4,6 +4,7 @@
 
 # project out
 build
+firmware
 
 # eide template
 *.ept
