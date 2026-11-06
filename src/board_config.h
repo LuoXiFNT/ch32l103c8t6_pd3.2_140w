@@ -3,7 +3,7 @@
  * @brief Build-time selection of the main and secondary board roles.
  * @author LuoXiFNT
  * @date 2026-08-23
- * @lastModified 2026-08-23
+ * @lastModified 2026-11-06
  */
 
 #ifndef BOARD_CONFIG_H
@@ -16,7 +16,7 @@
  * the secondary PCB firmware from the same source tree.
  */
 #if !defined(BOARD_MAIN) && !defined(BOARD_SUB)
-#define BOARD_MAIN // Choose whether to build the main board firmware or the sub board firmware.
+#define BOARD_MAIN
 #endif
 
 #if defined(BOARD_MAIN) && defined(BOARD_SUB)

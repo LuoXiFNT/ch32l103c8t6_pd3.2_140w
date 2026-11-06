@@ -1,5 +1,5 @@
 version: "4.1"
-name: ch32l103-demo
+name: ch32l103_pd3.2_140w
 type: RISC-V
 deviceName: null
 packDir: null
@@ -21,6 +21,11 @@ targets:
       incList:
         - sdk/Peripheral/inc
         - src
+        - src/platform
+        - src/drivers
+        - src/drivers/lcd_st7735s
+        - src/pd
+        - src/service
         - sdk/Core
         - sdk/Debug
       libList: []

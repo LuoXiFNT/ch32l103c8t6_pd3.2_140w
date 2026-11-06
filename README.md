@@ -9,13 +9,13 @@
 # 功能概览
 
 - **USB PD Source：** 支持 SPR Fixed、SPR PPS、SPR AVS、EPR Fixed 与 EPR AVS。
-- **默认输出能力：** Fixed 5V/9V/12V/15V @ 3A、20V @ 5A，PPS 5~21V，SPR AVS 9~20V，EPR Fixed 28V @ 5A，EPR AVS 15~28V，单路最高 140W。
+- **默认输出能力：** Fixed 5V/9V/12V/15V @ 3A、20V @ 5A，PPS 5\~21V，SPR AVS 9\~20V，EPR Fixed 28V @ 5A，EPR AVS 15\~28V，单路最高 140W。
 - **线缆能力识别：** 通过 SOP' Discover Identity 读取 E-Marker，根据线缆电流和耐压能力动态限制 5A 与 EPR 档位；普通线缆按 3A 能力发布。
 - **数字电源控制：** 根据 PD 请求异步配置 MP2980 输出电压与限流值，并结合 INA226 的 VBUS 反馈确认电源稳定后发送 `PS_RDY`。
 - **功率监测：** 两路 INA226 分别采集本板 Type-C 与 Type-A 端口数据，供保护、板间通信、显示和散热控制使用。
 - **故障管理：** 汇总 LM5069、LMR33630、CH217K、INA226、MP2980 与 CH211 的 GPIO/寄存器状态，完成消抖、延时屏蔽、协议层上报与界面提示。
 - **四口状态显示：** 主板 LCD 显示 C1、A1、C2、A2 的电压、电流、功率、协议类型及故障状态。
-- **功率联动散热：** 主板按四个端口的总功率生成风扇 PWM；100W 以下保持 30% 占空比，100~300W 线性提升，300W 到达最大值 80%。
+- **功率联动散热：** 主板按四个端口的总功率生成风扇 PWM；100W 以下保持 30% 占空比，100\~300W 线性提升，300W 到达最大值 80%。
 
 > 实际可发布的电流与 EPR 能力由线缆识别结果动态决定，并不等同于始终开放全部档位。
 
@@ -32,30 +32,45 @@
 固件采用**中断提供时间基准、主循环协作调度**的架构。各协议与外设模块均以短时、非阻塞状态机运行，耗时的 I2C 和 SPI 传输交由 DMA 完成，避免功率芯片访问或整屏刷新阻塞 PD 报文处理。
 
 ```text
-应用服务层
-├─ display_service / lcd*       四口状态显示与异步 LCD 刷新（仅主板）
-├─ fan_service                  总功率计算与风扇调速（仅主板）
-├─ fault_service                故障采样、消抖、聚合与上报
-├─ board_link                   主副板状态同步
-├─ ina226_service               双通道功率采样调度
-└─ led_service                  系统运行状态指示
-
-协议与控制层
-└─ pd*                          CC、PHY、线缆识别、能力、策略与电源时序
-
-器件驱动层
-├─ mp2980*                      Buck-Boost 功率级驱动与 I2C DMA 适配
-├─ ch211*                       Type-C 高压接口驱动与 I2C DMA 适配
-└─ ina226*                      电压、电流及功率监测驱动
-
-板级适配层
-├─ board_config / ch32l103_init 主副板配置与外设初始化
-└─ ch32l103_*_dma               I2C、SPI 非阻塞 DMA 传输
+src/
+├─ main.c, board_config.h        应用入口与板级引脚/常量配置
+├─ platform/                     板级适配层：CH32L103 外设、系统与 port
+│   ├─ ch32l103_init.*           时钟、GPIO 与外设初始化
+│   ├─ ch32l103_it.*             中断向量实现（含 1 ms 系统节拍）
+│   ├─ ch32_i2c_dma.*            共享 I2C DMA 队列
+│   ├─ ch32_spi_dma.*            SPI DMA 传输
+│   ├─ ch32l103_conf.h           外设配置开关
+│   ├─ system_ch32l103.*         系统时钟与启动
+│   ├─ {mp2980,ch211,ina226}_i2c_dma_port.*  各器件的 I2C DMA 端口
+│   └─ st7735s_spi_dma_port.*    面板的 SPI/GPIO 端口
+├─ drivers/                      器件驱动层：平台无关
+│   ├─ mp2980.c/.h, ch211.c/.h, ina226.c/.h
+│   └─ lcd_st7735s/              面板控制器与图形队列
+│       └─ st7735s.c/.h, lcd.c/.h, lcdfont.h, lcd_pic.h
+├─ pd/                           协议与控制层
+│   └─ pd.c/.h, pd_internal.h, pd_phy, pd_cc, pd_cable,
+│      pd_capability, pd_policy, pd_power
+└─ service/                      功能服务层
+    └─ display_service, ina226_service, fault_service, fan_service,
+       led_service, board_link
 ```
+
+分层与目录的对应关系：
+
+| 层 | 目录 | 说明 |
+| --- | --- | --- |
+| 应用服务层 | `src/service` | 显示页面、测量、风扇、故障、板间同步、指示灯 |
+| 协议与控制层 | `src/pd` | CC、PHY、线缆识别、能力、策略、电源时序 |
+| 器件驱动层 | `src/drivers` | 平台无关驱动：三个器件 + 面板控制器与图形队列 |
+| 板级适配层 | `src/platform`、`src/main.c` | MCU 外设、系统启动、板级配置与各器件 port |
+
+更换 MCU 平台时，`src/platform` 是唯一需要重写的目录：寄存器级外设操作、中断向量、系统时钟，以及四个端口（MP2980/CH211/INA226 的 I2C DMA、面板的 SPI/GPIO）都在这一层。`src/drivers` 完全平台无关；`src/pd`、`src/service` 通过 `src/platform` 暴露的引脚宏、传输接口与板级配置访问硬件，自身不包含初始化代码。
+
+新增目录时只需把目录加入 `.eide/eide.yml` 的 `incList`；`srcDirs` 会递归收集源文件。
 
 ## 1. 系统调度
 
-`TIM1` 每 **2ms** 产生一次系统节拍，只在中断中累计 PD、显示、故障检测和板间通信的计时量。`main()` 持续推进各状态机，主要数据流如下：
+`TIM1` 每 **1ms** 产生一次系统节拍（`BOARD_TICK_MS`），只在中断中累计 PD、显示、故障检测和板间通信的计时量。`main()` 持续推进各状态机，主要数据流如下：
 
 ```text
 定时器累计时间

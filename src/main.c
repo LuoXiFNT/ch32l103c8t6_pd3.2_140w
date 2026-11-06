@@ -1,14 +1,21 @@
-/********************************** (C) COPYRIGHT *******************************
- * File Name          : main.c
- * Author             : WCH
- * Version            : V1.0.0
- * Date               : 2023/12/26
- * Description        : Main program body.
- *********************************************************************************
- * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
- * Attention: This software (modified or not) and binary are used for
- * microcontroller manufactured by Nanjing Qinheng Microelectronics.
- *******************************************************************************/
+/**
+ * @file main.c
+ * @brief Firmware entry point: initialize the board, then run the cooperative loop.
+ *
+ * There is no RTOS. The TIM1 tick (see ch32l103_it.c) only advances the millisecond
+ * counters of the services; every state machine is advanced here, one bounded step
+ * per pass, in an order that keeps measurements one pass ahead of the logic that
+ * consumes them.
+ *
+ * @author LuoXiFNT
+ * @date 2026-08-23
+ * @lastModified 2026-11-06
+ *
+ * Derived from the WCH CH32L103 demo project; the original copyright notice is kept
+ * in the sdk/ tree.
+ */
+
+#include <stdbool.h>
 
 #include "ch32l103_init.h"
 #include "board_config.h"
@@ -36,44 +43,59 @@ static uint16_t PD_VbusSenseMv(void)
 
 int main(void)
 {
-    /* Configure board hardware and the shared I2C/SPI DMA transports. */
-    CH32L103_BoardInit();
+    bool bus_error;
 
-    /* Register each I2C client before its service begins queuing transfers. */
-    INA226_Service_Init(&g_i2c2_dma);
-    (void)CH211_I2C_DMA_InitDefault(&g_i2c2_dma);
-    (void)MP2980_I2C_DMA_InitDefault(&g_i2c2_dma);
+    /* Board hardware, transports, and every driver/display initialization. */
+    CH32L103_BoardInit();
 
     /* PD receives VBUS feedback through the board-level measurement callback. */
     PD_Init(PD_VbusSenseMv);
 
     while (1) {
-
+        /* 1. Time-driven state machines: PD protocol and the LCD transfer engine.
+         *    Both are tick-driven and only advance when their timer says so. */
 #if BOARD_IS_MAIN
-        /* Advance the LCD SPI DMA transfer state machine. */
-        LCD_Task();
+        lcd_task();
 #endif
-        /* Advance the PD protocol state machine from the system tick. */
         PD_TaskFromTick();
 
-        /* Complete queued I2C transfers and recover all clients after bus errors. */
+        /* 2. Shared I2C bus: finish the transfer in flight, recover the queue after a
+         *    bus error, then let each driver and the INA226 sampler queue at most one
+         *    transfer.
+         *
+         *    Recovery is per client and deliberately conservative. A bus error is not
+         *    a protection event: the PD contract stays in force, so the MP2980 port
+         *    keeps the current limit it has already programmed (USB PD 3.2 section
+         *    4.1.5.1 requires OCP not to act while the drawn current is valid for the
+         *    contract, so that limit must not be forgotten or rewritten needlessly) and
+         *    only drops the voltage cache, while CH211 restarts its command chain.
+         *    Real protection events go through Fault_Task() ->
+         *    PD_UpdateFaults(), which sends the Alert, removes VBUS and renegotiates
+         *    after the fault clears (sections 4.1.5.1 and 4.1.5.3).
+         *
+         *    The error flag is cleared only after every client has seen it. */
         CH32_I2C_DMA_Task(&g_i2c2_dma);
-        if (CH32_I2C_DMA_HadError(&g_i2c2_dma) != 0U) {
-            INA226_Service_Abort();
-            MP2980_I2C_DMA_Abort();
-            CH211_I2C_DMA_Abort();
-            CH32_I2C_DMA_ClearError(&g_i2c2_dma);
+        bus_error = CH32_I2C_DMA_HadError(&g_i2c2_dma);
+        if (bus_error) {
+            INA226_Service_Abort();   /* the sampler has no recovery of its own */
         }
         MP2980_I2C_DMA_Task();
         CH211_I2C_DMA_Task();
         INA226_Service_I2C_DMA_Task();
+        if (bus_error) {
+            CH32_I2C_DMA_ClearError(&g_i2c2_dma);
+        }
 
-        /* Update measurements first, then run board protection and reporting services. */
+        /* 3. Measurements first, so protection and reporting see fresh data. */
         INA226_Service_UpdateSamples();
+
+        /* 4. Board protection, then the link that publishes it to the other board. */
         Fault_Task();
         BoardLink_Task();
+
+        /* 5. Main board only: fan duty follows the measured power, then the LCD
+         *    content is rebuilt when the refresh slot is due. */
 #if BOARD_IS_MAIN
-        /* Main board only: update the fan control and the rendered LCD content. */
         Fan_Task();
         Display_Task();
 #endif
